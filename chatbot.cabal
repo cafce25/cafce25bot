@@ -1,0 +1,26 @@
+name:                chatbot
+version:             0.1.0.0
+-- synopsis:
+-- description:
+license:             BSD3
+license-file:        LICENSE
+author:              Jonathan Birk
+maintainer:          cafce25@gmail.com
+copyright:           © 2020 - 2021 Jonathan Birk
+category:            Experimental
+build-type:          Simple
+cabal-version:       >=1.10
+
+executable chatbot
+  hs-source-dirs:      src
+  main-is:             Main.hs
+  default-language:    Haskell2010
+  ghc-options:
+              -Wall
+              -Wcompat
+              -Wincomplete-uni-patterns
+              -Wredundant-constraints
+  build-depends:       base >= 4.7 && < 5
+                     , containers
+                     , megaparsec
+                     , network
