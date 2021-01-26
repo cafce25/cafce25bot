@@ -24,3 +24,4 @@ executable chatbot
                      , containers
                      , megaparsec
                      , network
+                     , transformers
