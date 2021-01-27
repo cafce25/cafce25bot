@@ -1,89 +1,28 @@
 {-# LANGUAGE ApplicativeDo #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards #-}
 
 module Main where
 
 --import System.Environment (getArgs)
+import BotConfig
 import Control.Exception (bracket)
-import Control.Monad (replicateM, void)
+import Control.Monad (forever)
 import Control.Monad.IO.Class
 import Control.Monad.Trans.State --(StateT(..), runStateT) 
 import Data.List (isPrefixOf)
-import Data.Map (Map)
-import qualified Data.Map as M
-import Data.Void (Void)
 import qualified Network.Socket as N
-import System.Exit (exitSuccess, exitFailure)
+import System.Exit ({-exitSuccess,-} exitFailure)
 import System.IO
-import Text.Megaparsec
-import Text.Megaparsec.Char
+import ServerMessage
+import Text.Megaparsec (parse)
 
-type Parser = Parsec Void String
-data ServerMessage = Msg { msgPrefix :: Maybe Prefix
-                         , msgCommand :: Command
-                         , msgParameters :: [Parameter]
-                         } deriving Show
-
-data Prefix = Prefix { prefixUser :: Maybe User
-                     , prefixHost :: Host
-                     } deriving Show
-
-type Command = String
-type Parameter = String
-type User = String
-type Host = String
-data Bot = Bot { botConfig :: Config
+data Bot = Bot { botConfig :: BotConfig
                , botHandle :: Handle
                --, botRoles :: Map User Role
                } deriving Show
 
-data Config = Config { confBotName :: String
-                     , confBotAuth :: String
-                     , confChannel :: String
-                     , confServer  :: String
-                     , confPort    :: N.PortNumber
-                     } deriving Show
 type Role = String
 type Net = StateT Bot IO
-
-serverMessageP :: Parser ServerMessage
-serverMessageP = do
-    msgPrefix <- optional $ char ':' *> prefixP <* some (satisfy (== ' '))
-    msgCommand <- commandP
-    void $ some $ satisfy (== ' ')
-    msgParameters <- paramsP
-    pure Msg{..}
-
-prefixP :: Parser Prefix
-prefixP = Prefix <$> optional userP <*> some (noneOf (" " :: String))
-
-userP :: Parser User
-userP = try $ do
-  u <- some alphaNumChar
-  void $ string ("!" ++ u ++ "@" ++ u ++ ".")
-  pure u
-
-commandP :: Parser String
-commandP = some letterChar <|> replicateM (3::Int) (digitChar :: Parser Char)
-
-paramsP :: Parser [String]
-paramsP = (:[]) <$> (char ':' *> many anySingle)
-    <|> try (do
-        tok <- many $ anySingleBut ' '
-        void $ some $ satisfy (== ' ')
-        rest <- paramsP
-        return $ tok:rest)
-    <|> (:[]) <$> many (anySingleBut ' ')
-
-
--- Configuration options
-myServer, myNick, myChannel :: String
-myServer = "irc.chat.twitch.tv"
-myNick   = "cafce25bot"
-myChannel = "#cafce25"
-myPort :: N.PortNumber
-myPort   = 6667
 
 
 -- Toplevel program
@@ -97,13 +36,7 @@ main = bracket startup teardown loop
 
 startup :: IO Bot
 startup = do
-    authToken <- readFile "auth.cafce25bot"
-    let config = Config { confBotName = myNick
-                        , confBotAuth = authToken
-                        , confServer = myServer
-                        , confPort = myPort
-                        , confChannel = myChannel
-                        }
+    config <- getConfig
     Bot config <$> connectTo (confServer config) (confPort config)
     
 
@@ -121,7 +54,6 @@ connectTo hostname portnumber = do
     sock <- N.socket (N.addrFamily addr) (N.addrSocketType addr) (N.addrProtocol addr)
     N.connect sock (N.addrAddress addr)
     N.socketToHandle sock ReadWriteMode
-
 
 -- Send a message to a handle
 write :: String -> String -> Net ()
@@ -141,13 +73,12 @@ listen = forever $ do
     h <- gets botHandle
     msg' <- liftIO $ do line <- hGetLine h
                         putStrLn line
+                        myServer <- gets $ confServer . botConfig
                         msg <- parseMessage (init line)
                         print msg
                         pure msg
     handleServerMessage msg'
-    where forever :: Net () -> Net ()
-          forever a = do a; forever a
-          --cleanup the server messages (drop metadata)
+    where --cleanup the server messages (drop metadata)
           --parseServerMessage
           parseMessage :: String -> IO ServerMessage
           parseMessage x = case parse serverMessageP myServer x of

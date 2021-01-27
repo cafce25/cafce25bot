@@ -1,0 +1,9 @@
+user:    cafce25bot
+auth:    auth.cafce25bot
+
+channel: cafce25
+
+roles:   roles.yaml
+
+server:  tmi.twitch.tv
+port:    6667

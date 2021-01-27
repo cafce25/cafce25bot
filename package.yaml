@@ -1,0 +1,50 @@
+name:                chatbot
+version:             0.1.0.0
+#description:
+license:             BSD3
+#license-file:        LICENSE
+author:              Jonathan Birk
+maintainer:          cafce25@gmail.com
+copyright:           © 2020 - 2021 Jonathan Birk
+#build-type:          Simple
+#cabal-version:       >=1.10
+
+synopsis:            chatbot for twitch.tv/cafce25
+category:            Development
+
+dependencies:
+- base >= 4.7 && < 5
+- containers
+- megaparsec
+- network
+- transformers
+
+ghc-options:
+- -Wall
+- -Wcompat
+- -Wincomplete-uni-patterns
+- -Wredundant-constraints
+- -rtsopts
+- -with-rtsopts=-N
+- -threaded
+
+library:
+  source-dirs: src
+  dependencies:
+  - yaml
+  - aeson
+
+executables:
+  chatbot-exe:
+    main:             Main.hs
+    source-dirs:      app
+    dependencies:     chatbot
+
+tests:
+  chatbot-test:
+    main:             Spec.hs
+    source-dirs:      test
+    dependencies:
+    - chatbot
+    - hspec
+    - hspec-megaparsec
