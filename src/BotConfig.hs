@@ -1,36 +1,37 @@
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE LambdaCase #-}
 module BotConfig (BotConfig(..), getConfig) where
 
---import Data.Yaml
---import Data.Yaml.Config
 import Data.Aeson.TH
-import Data.Char (toLower)
-import qualified Network.Socket as N
+import Data.List
+import Data.Map (Map)
+import Data.Yaml
+import Data.Yaml.Config
+import Text.Casing
 
-data BotConfig = BotConfig { confBotName :: String
-                           , confBotAuth :: String
+data BotConfig = BotConfig { confBotUser :: String
+                           , confAuth    :: String
                            , confChannel :: String
                            , confServer  :: String
                            , confPort    :: Int
+                           , confRoles   :: Map String String
                            } deriving Show
 
-$(deriveJSON defaultOptions{ fieldLabelModifier = drop 4, constructorTagModifier = map toLower} ''BotConfig)
+$(deriveJSON defaultOptions{ fieldLabelModifier = quietSnake . drop 4} ''BotConfig)
 
--- Configuration options
-myServer, myNick, myChannel :: String
-myServer = "irc.chat.twitch.tv"
-myNick   = "cafce25bot"
-myChannel = "#cafce25"
-myPort :: N.PortNumber
-myPort   = 6667
+defaultConf :: Value
+defaultConf
+  = (\case {Right r -> r; Left _ -> error "default config is misformed"}) $ decodeEither'
+    "server: irc.chat.twitch.tv\n\
+    \port: 6667\n"
 
 getConfig :: IO BotConfig
 getConfig = do
-  authToken <- readFile "auth.cafce25bot"
-  pure BotConfig { confBotName = myNick
-                 , confBotAuth = authToken
-                 , confServer = myServer
-                 , confPort = fromIntegral myPort
-                 , confChannel = myChannel
-                 }
-
+  conf <- loadYamlSettings ["chatbot.yaml"] [defaultConf] useEnv
+  let authS = confAuth conf
+  if "oauth:" `isPrefixOf` authS
+     then pure conf
+     else do
+       auth <- readFile authS
+       pure conf{confAuth = auth}

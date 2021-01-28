@@ -33,6 +33,8 @@ library:
   dependencies:
   - yaml
   - aeson
+  - casing
+  - bytestring
 
 executables:
   chatbot-exe:

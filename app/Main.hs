@@ -8,10 +8,12 @@ import BotConfig
 import Control.Exception (bracket)
 import Control.Monad (forever)
 import Control.Monad.IO.Class
-import Control.Monad.Trans.State --(StateT(..), runStateT) 
+import Control.Monad.Trans.State --(StateT(..), runStateT)
 import Data.List (isPrefixOf)
+import Data.Map (Map)
+import qualified Data.Map as M
 import qualified Network.Socket as N
-import System.Exit ({-exitSuccess,-} exitFailure)
+import System.Exit (exitSuccess, exitFailure)
 import System.IO
 import ServerMessage
 import Text.Megaparsec (parse)
@@ -23,6 +25,7 @@ data Bot = Bot { botConfig :: BotConfig
 
 type Role = String
 type Net = StateT Bot IO
+type User = String
 
 
 -- Toplevel program
@@ -37,13 +40,13 @@ main = bracket startup teardown loop
 startup :: IO Bot
 startup = do
     config <- getConfig
-    Bot config <$> connectTo (confServer config) (confPort config)
-    
+    Bot config <$> connectTo (confServer config) (fromIntegral $ confPort config)
+
 
 run :: Net ()
 run = do
-  gets (confBotAuth . botConfig) >>= write "PASS"
-  gets (confBotName . botConfig) >>= write "NICK"
+  gets (confAuth . botConfig) >>= write "PASS"
+  gets (confBotUser . botConfig) >>= write "NICK"
   gets (confChannel . botConfig) >>= write "JOIN"
   listen
 
@@ -71,28 +74,43 @@ listen :: Net ()
 listen = forever $ do
 -- do forever read a line from the handle and put that line to stdout
     h <- gets botHandle
+    myServer <- gets $ confServer . botConfig
     msg' <- liftIO $ do line <- hGetLine h
                         putStrLn line
-                        myServer <- gets $ confServer . botConfig
-                        msg <- parseMessage (init line)
+                        msg <- parseMessage (init line) myServer
                         print msg
                         pure msg
     handleServerMessage msg'
     where --cleanup the server messages (drop metadata)
           --parseServerMessage
-          parseMessage :: String -> IO ServerMessage
-          parseMessage x = case parse serverMessageP myServer x of
+          parseMessage x s = case parse serverMessageP s x of
                              Right m -> pure m
                              Left e -> print e >> exitFailure
           --dispatch a single command
           --check for ping so we can respond with pong
           --send a pong responding with whatever the server sent us
 
+isInGroup :: Role -> User -> Map User Role -> Bool
+isInGroup r = ((r ==).) . M.findWithDefault "user"
+
+isMod :: User -> Map User Role -> Bool
+isMod = isInGroup "moderator"
+
+isStreamer :: User -> Map User Role -> Bool
+isStreamer = isInGroup "streamer"
+
+getRole :: Map User Role -> Maybe User -> Maybe Role
+getRole m = (>>= (`M.lookup` m))
+
 handleServerMessage :: ServerMessage -> Net ()
 handleServerMessage Msg{msgCommand="PING", msgParameters=[m]} = write "PONG" (':':m)
 handleServerMessage msg@Msg{msgCommand="PRIVMSG", msgParameters=[_ch, m]}
--- | "!quit" `isPrefixOf` m = write "QUIT" ":Exiting" >> exitSuccess
-  | "!echo " `isPrefixOf` m = write "PRIVMSG" (myChannel ++ " : " ++ drop 6 m)
+  | "!quit" `isPrefixOf` m = do
+    roles <- gets $ confRoles . botConfig
+    if getRole roles user `elem` map Just [{-"moderator",-} "streamer"]
+       then write "QUIT" ":Exiting" >> liftIO exitSuccess
+       else write "PRIVMSG" "#cafce25 :need to be moderator to use !quit"
+  | "!echo " `isPrefixOf` m = gets (confChannel . botConfig) >>= \myChannel -> write "PRIVMSG" (myChannel ++ " : " ++ drop 6 m)
   | otherwise = pure ()
   where user = pure msg >>= msgPrefix >>= prefixUser
 handleServerMessage _ = pure ()
